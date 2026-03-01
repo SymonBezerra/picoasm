@@ -35,9 +35,9 @@
     → enough to create a stack of length 1024
 - E500 → F4FF → PRG-RAM (battery backed, 4KB)
 - F500 → F50F → I\O
-    + F900 → Controller
-    + F901 → Bank swap
-    + F902 → V-Sync flag (keep it?)
+    + F500 → Controller
+    + F501 → Bank swap
+    + F502 → V-Sync flag (keep it?)
 - F510 → F51F → Audio channels
 
 - display is 32x24 (640x480)
