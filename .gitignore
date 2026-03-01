@@ -4,3 +4,6 @@ venv/
 *.picoasm
 *.bin
 *.chr
+*.md
+!spec/*.md
+!README.md
