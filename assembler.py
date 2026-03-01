@@ -7,7 +7,7 @@ import os
 
 parser = ArgumentParser()
 
-parser.add_argument("FILE", help="Path to the picoASM source file")
+parser.add_argument("FILES", nargs="+", help="Path to the picoASM source files")
 parser.add_argument(
     "-o", "--output", help="Path to the output binary file", default="output.bin"
 )
@@ -39,9 +39,11 @@ SYMBOLS = (
 
 
 class Assembler:
-    def __init__(self, path):
-        with open(Path(os.path.join(os.getcwd(), path)), "r") as f:
-            self.lines = f.readlines()
+    def __init__(self, paths):
+        self.lines = list()
+        for path in paths:
+            with open(Path(os.path.join(os.getcwd(), path)), "r") as f:
+                self.lines.append(f.readlines())
 
             self.instructions = defaultdict(list)
             self.macros = dict()
@@ -72,158 +74,163 @@ class Assembler:
         return tokens
 
     def assemble(self):
-        header_line = self.lines[0].strip()
-        if (
-            not header_line.startswith("{")
-            or not header_line.endswith("}")
-            or (header_line.startswith("{{") and header_line.endswith("}}"))
-        ):
-            raise SyntaxError("First line must be a header in the format {bank_name}")
-        bank_name = header_line[1:-1].strip()
-        i = 1
-        while i < len(self.lines):
-            line = self.lines[i].split(";")[0].strip()  # Remove comments and whitespace
-            i += 1
-            if not line:
-                continue  # Skip empty lines
+        for lines in self.lines:
+            header_line = lines[0].strip()
             if (
-                line.startswith("{")
-                and line.endswith("}")
-                and not (line.startswith("{{") and line.endswith("}}"))
+                not header_line.startswith("{")
+                or not header_line.endswith("}")
+                or (header_line.startswith("{{") and header_line.endswith("}}"))
             ):
-                raise SyntaxError("Bank headers can only be defined on the first line")
-            elif line.startswith("{{") and line.endswith("}}"):
-                with open(
-                    Path(os.path.join(os.getcwd(), line[2:-2].strip())), "r"
-                ) as f:
-                    included_lines = f.readlines()
-                self.lines = self.lines[: i - 1] + included_lines + self.lines[i:]
-            elif line.startswith("%"):
-                self.macros[line[1:]] = self.tokenize(line[1:])
-            elif line.startswith(":"):
-                self.labels[line[1:]] = len(self.instructions[bank_name])
-            elif line.startswith("@"):
-                # @ [literal or address value] [label or address]
-                parts = self.tokenize(line[1:])
-                if len(parts) != 2:
-                    raise SyntaxError(f"Invalid JMP syntax: {line}")
-                type, value = self.parse_operand_type(parts[0])
-                target = self.parse_addr(parts[1])
-                self.instructions[bank_name].append(
-                    struct.pack(
-                        "<BBHH", SYMBOLS.index("@"), type.value, value, target
-                    ).ljust(8, b"\x00")
+                raise SyntaxError(
+                    "First line must be a header in the format {bank_name}"
                 )
-            elif line.startswith("#"):
-                parts = self.tokenize(line[1:])
-                if len(parts) != 2:
-                    raise SyntaxError(f"Invalid MOV syntax: {line}")
-                type, value = self.parse_operand_type(parts[0])
-                target_value = self.parse_addr(parts[1])
-                self.instructions[bank_name].append(
-                    struct.pack(
-                        "<BBHH", SYMBOLS.index("#"), type.value, value, target_value
-                    ).ljust(8, b"\x00")
-                )
-            elif line.startswith("+"):
-                parts = self.tokenize(line[1:])
-                if len(parts) != 2:
-                    raise SyntaxError(f"Invalid ADD syntax: {line}")
-                value = self.parse_value(parts[0])
-                target = self.parse_addr(parts[1])
-                self.instructions[bank_name].append(
-                    struct.pack("<BBHH", SYMBOLS.index("+"), 0, value, target).ljust(
-                        8, b"\x00"
+            bank_name = header_line[1:-1].strip()
+            i = 1
+            while i < len(lines):
+                line = lines[i].split(";")[0].strip()  # Remove comments and whitespace
+                i += 1
+                if not line:
+                    continue  # Skip empty lines
+                if (
+                    line.startswith("{")
+                    and line.endswith("}")
+                    and not (line.startswith("{{") and line.endswith("}}"))
+                ):
+                    raise SyntaxError(
+                        "Bank headers can only be defined on the first line"
                     )
-                )
-            elif line.startswith("-"):
-                parts = self.tokenize(line[1:])
-                if len(parts) != 2:
-                    raise SyntaxError(f"Invalid SUB syntax: {line}")
-                value = self.parse_value(parts[0])
-                target = self.parse_addr(parts[1])
-                self.instructions[bank_name].append(
-                    struct.pack("<BBHH", SYMBOLS.index("-"), 0, value, target).ljust(
-                        8, b"\x00"
+                elif line.startswith("{{") and line.endswith("}}"):
+                    with open(
+                        Path(os.path.join(os.getcwd(), line[2:-2].strip())), "r"
+                    ) as f:
+                        included_lines = f.readlines()
+                    lines = lines[: i - 1] + included_lines + lines[i:]
+                elif line.startswith("%"):
+                    self.macros[line[1:]] = self.tokenize(line[1:])
+                elif line.startswith(":"):
+                    self.labels[line[1:]] = len(self.instructions[bank_name])
+                elif line.startswith("@"):
+                    # @ [literal or address value] [label or address]
+                    parts = self.tokenize(line[1:])
+                    if len(parts) != 2:
+                        raise SyntaxError(f"Invalid JMP syntax: {line}")
+                    type, value = self.parse_operand_type(parts[0])
+                    target = self.parse_addr(parts[1])
+                    self.instructions[bank_name].append(
+                        struct.pack(
+                            "<BBHH", SYMBOLS.index("@"), type.value, value, target
+                        ).ljust(8, b"\x00")
                     )
-                )
-            elif line.startswith("?"):
-                parts = self.tokenize(line[1:])
-                if len(parts) != 2:
-                    raise SyntaxError(f"Invalid CGTZ syntax: {line}")
-                target = self.parse_addr(parts[0])
-                save_addr = self.parse_addr(parts[1])
-                self.instructions[bank_name].append(
-                    struct.pack("<BHH", SYMBOLS.index("?"), target, save_addr).ljust(
-                        8, b"\x00"
+                elif line.startswith("#"):
+                    parts = self.tokenize(line[1:])
+                    if len(parts) != 2:
+                        raise SyntaxError(f"Invalid MOV syntax: {line}")
+                    type, value = self.parse_operand_type(parts[0])
+                    target_value = self.parse_addr(parts[1])
+                    self.instructions[bank_name].append(
+                        struct.pack(
+                            "<BBHH", SYMBOLS.index("#"), type.value, value, target_value
+                        ).ljust(8, b"\x00")
                     )
-                )
-            elif line.startswith("="):
-                parts = self.tokenize(line[1:])
-                if len(parts) != 3:
-                    raise SyntaxError(f"Invalid CEQ syntax: {line}")
-                a1 = self.parse_addr(parts[0])
-                a2 = self.parse_addr(parts[1])
-                save_addr = self.parse_addr(parts[2])
-                self.instructions[bank_name].append(
-                    struct.pack("<BHHH", SYMBOLS.index("="), a1, a2, save_addr).ljust(
-                        8, b"\x00"
+                elif line.startswith("+"):
+                    parts = self.tokenize(line[1:])
+                    if len(parts) != 2:
+                        raise SyntaxError(f"Invalid ADD syntax: {line}")
+                    value = self.parse_value(parts[0])
+                    target = self.parse_addr(parts[1])
+                    self.instructions[bank_name].append(
+                        struct.pack(
+                            "<BBHH", SYMBOLS.index("+"), 0, value, target
+                        ).ljust(8, b"\x00")
                     )
-                )
-            elif line.startswith(","):
-                self.instructions[bank_name].append(
-                    struct.pack("<B", SYMBOLS.index(",")).ljust(8, b"\x00")
-                )
-            elif line.startswith("."):
-                self.instructions[bank_name].append(
-                    struct.pack("<B", SYMBOLS.index(".")).ljust(8, b"\x00")
-                )
-            elif line.startswith("^"):
-                parts = self.tokenize(line[1:])
-                addr = self.parse_addr(parts[0])
-                if len(parts) != 1:
-                    raise SyntaxError(f"Invalid CRSJ syntax: {line}")
-                self.instructions[bank_name].append(
-                    struct.pack("<BH", SYMBOLS.index("^"), addr).ljust(8, b"\x00")
-                )
-            elif line.startswith("<"):
-                parts = self.tokenize(line[1:])
-                if len(parts) != 1:
-                    raise SyntaxError(f"Invalid CRSL syntax: {line}")
-                value = self.parse_value(parts[0])
-                self.instructions[bank_name].append(
-                    struct.pack("<BB", SYMBOLS.index("<"), value).ljust(8, b"\x00")
-                )
-            elif line.startswith(">"):
-                parts = self.tokenize(line[1:])
-                if len(parts) != 1:
-                    raise SyntaxError(f"Invalid CRSR syntax: {line}")
-                value = self.parse_value(parts[0])
-                self.instructions[bank_name].append(
-                    struct.pack("<BB", SYMBOLS.index(">"), value).ljust(8, b"\x00")
-                )
-            elif line.startswith("!"):
-                if len(line) != 1:
-                    raise SyntaxError(f"Invalid VSYNC syntax: {line}")
-                self.instructions[bank_name].append(
-                    struct.pack("<B", SYMBOLS.index("!")).ljust(8, b"\x00")
-                )
-            elif line.startswith("V"):
-                parts = self.tokenize(line[1:])
-                if len(parts) != 1:
-                    raise SyntaxError(f"Invalid GOSUB syntax: {line}")
-                target = self.parse_addr(parts[0])
-                self.instructions[bank_name].append(
-                    struct.pack("<BH", SYMBOLS.index("V"), target).ljust(8, b"\x00")
-                )
-            elif line.startswith("A"):
-                if len(line) != 1:
-                    raise SyntaxError(f"Invalid RET syntax: {line}")
-                self.instructions[bank_name].append(
-                    struct.pack("<B", SYMBOLS.index("A")).ljust(8, b"\x00")
-                )
-            else:
-                raise SyntaxError(f"Unknown instruction: {line}")
+                elif line.startswith("-"):
+                    parts = self.tokenize(line[1:])
+                    if len(parts) != 2:
+                        raise SyntaxError(f"Invalid SUB syntax: {line}")
+                    value = self.parse_value(parts[0])
+                    target = self.parse_addr(parts[1])
+                    self.instructions[bank_name].append(
+                        struct.pack(
+                            "<BBHH", SYMBOLS.index("-"), 0, value, target
+                        ).ljust(8, b"\x00")
+                    )
+                elif line.startswith("?"):
+                    parts = self.tokenize(line[1:])
+                    if len(parts) != 2:
+                        raise SyntaxError(f"Invalid CGTZ syntax: {line}")
+                    target = self.parse_addr(parts[0])
+                    save_addr = self.parse_addr(parts[1])
+                    self.instructions[bank_name].append(
+                        struct.pack(
+                            "<BHH", SYMBOLS.index("?"), target, save_addr
+                        ).ljust(8, b"\x00")
+                    )
+                elif line.startswith("="):
+                    parts = self.tokenize(line[1:])
+                    if len(parts) != 3:
+                        raise SyntaxError(f"Invalid CEQ syntax: {line}")
+                    a1 = self.parse_addr(parts[0])
+                    a2 = self.parse_addr(parts[1])
+                    save_addr = self.parse_addr(parts[2])
+                    self.instructions[bank_name].append(
+                        struct.pack(
+                            "<BHHH", SYMBOLS.index("="), a1, a2, save_addr
+                        ).ljust(8, b"\x00")
+                    )
+                elif line.startswith(","):
+                    self.instructions[bank_name].append(
+                        struct.pack("<B", SYMBOLS.index(",")).ljust(8, b"\x00")
+                    )
+                elif line.startswith("."):
+                    self.instructions[bank_name].append(
+                        struct.pack("<B", SYMBOLS.index(".")).ljust(8, b"\x00")
+                    )
+                elif line.startswith("^"):
+                    parts = self.tokenize(line[1:])
+                    addr = self.parse_addr(parts[0])
+                    if len(parts) != 1:
+                        raise SyntaxError(f"Invalid CRSJ syntax: {line}")
+                    self.instructions[bank_name].append(
+                        struct.pack("<BH", SYMBOLS.index("^"), addr).ljust(8, b"\x00")
+                    )
+                elif line.startswith("<"):
+                    parts = self.tokenize(line[1:])
+                    if len(parts) != 1:
+                        raise SyntaxError(f"Invalid CRSL syntax: {line}")
+                    value = self.parse_value(parts[0])
+                    self.instructions[bank_name].append(
+                        struct.pack("<BB", SYMBOLS.index("<"), value).ljust(8, b"\x00")
+                    )
+                elif line.startswith(">"):
+                    parts = self.tokenize(line[1:])
+                    if len(parts) != 1:
+                        raise SyntaxError(f"Invalid CRSR syntax: {line}")
+                    value = self.parse_value(parts[0])
+                    self.instructions[bank_name].append(
+                        struct.pack("<BB", SYMBOLS.index(">"), value).ljust(8, b"\x00")
+                    )
+                elif line.startswith("!"):
+                    if len(line) != 1:
+                        raise SyntaxError(f"Invalid VSYNC syntax: {line}")
+                    self.instructions[bank_name].append(
+                        struct.pack("<B", SYMBOLS.index("!")).ljust(8, b"\x00")
+                    )
+                elif line.startswith("V"):
+                    parts = self.tokenize(line[1:])
+                    if len(parts) != 1:
+                        raise SyntaxError(f"Invalid GOSUB syntax: {line}")
+                    target = self.parse_addr(parts[0])
+                    self.instructions[bank_name].append(
+                        struct.pack("<BH", SYMBOLS.index("V"), target).ljust(8, b"\x00")
+                    )
+                elif line.startswith("A"):
+                    if len(line) != 1:
+                        raise SyntaxError(f"Invalid RET syntax: {line}")
+                    self.instructions[bank_name].append(
+                        struct.pack("<B", SYMBOLS.index("A")).ljust(8, b"\x00")
+                    )
+                else:
+                    raise SyntaxError(f"Unknown instruction: {line}")
 
     def parse_addr(self, token):
         if token[1:].isdigit():
@@ -261,13 +268,25 @@ class Assembler:
 
 
 if __name__ == "__main__":
-    assembler = Assembler(args.FILE)
+    assembler = Assembler(args.FILES)
     assembler.assemble()
-    with open("output.bin", "wb") as f:
+    if "GRAPHICS" not in assembler.instructions:
+        raise ValueError("Missing required GRAPHICS (CHR-ROM) bank")
+    with open(args.output, "wb") as f:
         header = f"picoASM".encode("ascii")
         f.write(header)
-        f.write(struct.pack("<B", len(assembler.instructions)))  # write number of banks
-        for i, bank_name in enumerate(assembler.instructions):
+        f.write(
+            struct.pack("<B", len(assembler.instructions) - 1)
+        )  # write number of banks
+        graphics_bank = assembler.instructions["GRAPHICS"]
+        f.write(
+            struct.pack("<H", len(graphics_bank))
+        )  # write size of graphics bank (in u64 instructions)
+        for instr in graphics_bank:
+            f.write(instr)
+        for i, bank_name in enumerate(sorted(assembler.instructions.keys())):
+            if bank_name == "GRAPHICS":
+                continue
             f.write(struct.pack("<H", len(assembler.instructions[bank_name])))
             for instr in assembler.instructions[bank_name]:
                 f.write(instr)

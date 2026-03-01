@@ -18,9 +18,7 @@ class CharacterROM:
         with open(path, "rb") as f:
             data = f.read()
         stream = BytesIO(data)
-        stream.seek(7)
-        banks_count = read(stream, "<B")
-        for _ in range(banks_count):
-            bank_size = read(stream, "<H")
-            stream.seek(bank_size * 8, 1)
-        self.memory = bytearray(stream.read())
+        stream.seek(7 + 1)
+        self.len = read(stream, "<H")
+        self.program = bytearray(stream.read(self.len * 8))
+        self.memory = bytearray(CharacterROM.CHRROM_SIZE)

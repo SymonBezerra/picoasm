@@ -23,7 +23,12 @@ class ProgramROM:
         self.banks_count = read(stream, "<B")
         self.swap_bank = 1
         self.memory = bytearray(ProgramROM.BANK_SIZE * self.banks_count)
-        for i in range(min(self.banks_count, 2)):
+
+        # avoid GRAPHICS bank, which is the first one, and load only the program banks
+        graphics_len = read(stream, "<H")
+        stream.seek(graphics_len * 8, 1)
+
+        for i in range(self.banks_count):
             bank_size = read(stream, "<H")
             self.banks_len.append(bank_size)
             start = ProgramROM.PRGROM_BANKS[i]

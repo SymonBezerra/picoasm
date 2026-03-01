@@ -1,0 +1,9 @@
+{ GRAPHICS }
+
+; since we'll only need one tile, we'll define a single block
+
+# 0b01010101 $0x9000
+
+; push green color to palette #0.1
+
+# 0xFF $0xD901

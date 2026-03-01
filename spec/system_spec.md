@@ -12,25 +12,31 @@
 - 0x4000 → 0x7FFF → 16KB PRG-ROM Bank 1 (Switchable)
 - 0x8000 → 0x8FFF → 4KB VRAM
     + `[hi-byte] [lo-byte] [x coordinate] [y coordinate]`
-    + attributes (from LSB to MSB)
-        - bit 0: v-flip
-        - bit 1: h-flip
-        - bit 2: priority
-        - bit 3: hidden
-        - bit 4: monochrome
-        - bit 5-7: animation offset
+    + `hi-byte` and `lo-byte` are relative addresses to the CHR-ROM
     + 8192 bytes / 4 → 2048 tiles in VRAM
 - 0x9000 → 0xAFFF → 16KB CHR-ROM
-    + each byte is a 2x2 pixel grid
-    + each 8 bytes is a 16x16 grid
+    + each byte is a 2x2 pixel grid (**block**),
+    where each two bits define a color in the palette
+    + Each **tile** (8x8) corresponds to 16 bytes
 - 0xB000 → 0xBFFF → 4KB WRAM
 - 0xC000 → 0xCFFF → 4KB WRAM
 
 - 0xD000 → 0xD7FF → 2KB Object Attribute Mapper (Background)
-    + 512 objects on background
+    + `[hi-byte] [lo-byte] [palette] [attributes]`
+    + `hi-byte` and `lo-byte` are relative addresses to the VRAM
+    + `palette` is a relative address to the palette memory
+    + attributes (from LSB to MSB)
+        - bit 0: v-flip
+        - bit 1: h-flip
+        - bit 2: priority (surface 0 or 1)
+        - bit 3: visible
+        - bit 4: monochrome
+        - bit 5-7: animation offset
+    + 512 objects on background (both surface 0 and 1)
 - 0xD800 → 0xD8FF → 256B Object Attribute Mapper (Foreground)
-    + 64 objects on foreground
+    + 64 objects on foreground (both surface 0 and 1)
 - 0xD900 → 0xDCFF → Color Palettes (1KB)
+    + 4 colors per palette, 256 palettes
 - 0xDD00 → 0xE4FF → Stack RAM (2KB, reserved)
     → enough to create a stack of length 1024
 - E500 → F4FF → PRG-RAM (battery backed, 4KB)
