@@ -21,20 +21,20 @@ class OperandType(Enum):
 
 
 SYMBOLS = (
-    "@",  # JMP,
-    "+",  # ADD,
-    "-",  # SUB,
-    "#",  # MOV,
-    "?",  # CGTZ,
-    "=",  # CEQ,
-    ",",  # INP,
-    ".",  # OUT,
-    "^",  # CRSJ,
-    "<",  # CRSL,
-    ">",  # CRSR,
-    "!",  # VSYNC,
-    "V",  # GOSUB,
-    "A",  # RET
+    "@",  # JMP 0,
+    "+",  # ADD 1,
+    "-",  # SUB 2,
+    "#",  # MOV 3,
+    "?",  # CGTZ 4,
+    "=",  # CEQ 5,
+    ",",  # INP 6,
+    ".",  # OUT 7,
+    "^",  # CRSJ 8,
+    "<",  # CRSL 9,
+    ">",  # CRSR 10,
+    "!",  # VSYNC 11,
+    "V",  # GOSUB 12,
+    "A",  # RET 13
 )
 
 
@@ -136,12 +136,17 @@ class Assembler:
                         raise SyntaxError(f"Invalid MOV syntax: {line}")
                     try:
                         type, value = self.parse_operand_type(parts[0])
-                        target_value = self.parse_addr(parts[1])
+                        target_type, target_value = self.parse_addr_type(parts[1])
                     except Exception as e:
                         raise SyntaxError(f"Invalid MOV syntax: {line}") from e
                     self.instructions[bank_name].append(
                         struct.pack(
-                            "<BBHH", SYMBOLS.index("#"), type.value, value, target_value
+                            "<BBHBH",
+                            SYMBOLS.index("#"),
+                            type.value,
+                            value,
+                            target_type.value,
+                            target_value,
                         ).ljust(8, b"\x00")
                     )
                 elif line.startswith("+"):
@@ -230,7 +235,7 @@ class Assembler:
                         raise SyntaxError(f"Invalid CRSL syntax: {line}") from e
                     self.instructions[bank_name].append(
                         struct.pack(
-                            "<BHH", SYMBOLS.index("<"), type.value, value
+                            "<BBH", SYMBOLS.index("<"), type.value, value
                         ).ljust(8, b"\x00")
                     )
                 elif line.startswith(">"):
@@ -243,7 +248,7 @@ class Assembler:
                         raise SyntaxError(f"Invalid CRSR syntax: {line}") from e
                     self.instructions[bank_name].append(
                         struct.pack(
-                            "<BHH", SYMBOLS.index(">"), type.value, value
+                            "<BBH", SYMBOLS.index(">"), type.value, value
                         ).ljust(8, b"\x00")
                     )
                 elif line.startswith("!"):
@@ -274,7 +279,7 @@ class Assembler:
 
     def parse_addr(self, token):
         if token[1:] == "_":
-            return 0xF504  # CRS_REG
+            return 0xF504
         elif token[1:].isdigit():
             return int(token[1:])
         elif token.startswith("$0x"):
@@ -282,12 +287,19 @@ class Assembler:
         elif token.startswith("$0b"):
             return int(token[3:], 2)
         elif token[1:] in self.labels:
-            print(self.labels[token[1:]])
             return self.labels[token[1:]]
         elif token[1:] in self.macros:
             return self.parse_addr(self.macros[token[1:]])
         else:
             raise SyntaxError(f"Invalid address: {token}")
+
+    def parse_addr_type(self, token):
+        if token[1:].startswith("_"):
+            return OperandType.ADDRESS, 0xF504
+        elif token[1:].startswith("*"):
+            return OperandType.ADDRESS, self.parse_addr(token[1:])
+        else:
+            return OperandType.LITERAL, self.parse_addr(token)
 
     def parse_operand_type(self, token):
         if token.startswith("%"):
