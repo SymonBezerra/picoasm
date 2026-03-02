@@ -106,7 +106,13 @@ class Assembler:
                         included_lines = f.readlines()
                     lines = lines[: i - 1] + included_lines + lines[i:]
                 elif line.startswith("%"):
-                    self.macros[line[1:]] = self.tokenize(line[1:])
+                    tokens = self.tokenize(line[1:])
+                    if len(tokens) != 2:
+                        raise SyntaxError(f"Invalid macro definition: {line}")
+                    macro_name = tokens[0]
+                    macro_value = tokens[1]
+                    self.macros[macro_name] = macro_value
+                    # self.macros[line[1:]] = self.tokenize(line[1:])[1:]
                 elif line.startswith(":"):
                     self.labels[line[1:]] = len(self.instructions[bank_name])
                 elif line.startswith("@"):
@@ -114,8 +120,11 @@ class Assembler:
                     parts = self.tokenize(line[1:])
                     if len(parts) != 2:
                         raise SyntaxError(f"Invalid JMP syntax: {line}")
-                    type, value = self.parse_operand_type(parts[0])
-                    target = self.parse_addr(parts[1])
+                    try:
+                        type, value = self.parse_operand_type(parts[0])
+                        target = self.parse_addr(parts[1])
+                    except Exception as e:
+                        raise SyntaxError(f"Invalid JMP syntax: {line}") from e
                     self.instructions[bank_name].append(
                         struct.pack(
                             "<BBHH", SYMBOLS.index("@"), type.value, value, target
@@ -125,8 +134,11 @@ class Assembler:
                     parts = self.tokenize(line[1:])
                     if len(parts) != 2:
                         raise SyntaxError(f"Invalid MOV syntax: {line}")
-                    type, value = self.parse_operand_type(parts[0])
-                    target_value = self.parse_addr(parts[1])
+                    try:
+                        type, value = self.parse_operand_type(parts[0])
+                        target_value = self.parse_addr(parts[1])
+                    except Exception as e:
+                        raise SyntaxError(f"Invalid MOV syntax: {line}") from e
                     self.instructions[bank_name].append(
                         struct.pack(
                             "<BBHH", SYMBOLS.index("#"), type.value, value, target_value
@@ -136,30 +148,39 @@ class Assembler:
                     parts = self.tokenize(line[1:])
                     if len(parts) != 2:
                         raise SyntaxError(f"Invalid ADD syntax: {line}")
-                    value = self.parse_value(parts[0])
-                    target = self.parse_addr(parts[1])
+                    try:
+                        value = self.parse_value(parts[0])
+                        target = self.parse_addr(parts[1])
+                    except Exception as e:
+                        raise SyntaxError(f"Invalid ADD syntax: {line}") from e
                     self.instructions[bank_name].append(
-                        struct.pack(
-                            "<BBHH", SYMBOLS.index("+"), 0, value, target
-                        ).ljust(8, b"\x00")
+                        struct.pack("<BBH", SYMBOLS.index("+"), value, target).ljust(
+                            8, b"\x00"
+                        )
                     )
                 elif line.startswith("-"):
                     parts = self.tokenize(line[1:])
                     if len(parts) != 2:
                         raise SyntaxError(f"Invalid SUB syntax: {line}")
-                    value = self.parse_value(parts[0])
-                    target = self.parse_addr(parts[1])
+                    try:
+                        value = self.parse_value(parts[0])
+                        target = self.parse_addr(parts[1])
+                    except Exception as e:
+                        raise SyntaxError(f"Invalid SUB syntax: {line}") from e
                     self.instructions[bank_name].append(
-                        struct.pack(
-                            "<BBHH", SYMBOLS.index("-"), 0, value, target
-                        ).ljust(8, b"\x00")
+                        struct.pack("<BBH", SYMBOLS.index("-"), value, target).ljust(
+                            8, b"\x00"
+                        )
                     )
                 elif line.startswith("?"):
                     parts = self.tokenize(line[1:])
                     if len(parts) != 2:
                         raise SyntaxError(f"Invalid CGTZ syntax: {line}")
-                    target = self.parse_addr(parts[0])
-                    save_addr = self.parse_addr(parts[1])
+                    try:
+                        target = self.parse_addr(parts[0])
+                        save_addr = self.parse_addr(parts[1])
+                    except Exception as e:
+                        raise SyntaxError(f"Invalid CGTZ syntax: {line}") from e
                     self.instructions[bank_name].append(
                         struct.pack(
                             "<BHH", SYMBOLS.index("?"), target, save_addr
@@ -169,9 +190,12 @@ class Assembler:
                     parts = self.tokenize(line[1:])
                     if len(parts) != 3:
                         raise SyntaxError(f"Invalid CEQ syntax: {line}")
-                    a1 = self.parse_addr(parts[0])
-                    a2 = self.parse_addr(parts[1])
-                    save_addr = self.parse_addr(parts[2])
+                    try:
+                        a1 = self.parse_addr(parts[0])
+                        a2 = self.parse_addr(parts[1])
+                        save_addr = self.parse_addr(parts[2])
+                    except Exception as e:
+                        raise SyntaxError(f"Invalid CEQ syntax: {line}") from e
                     self.instructions[bank_name].append(
                         struct.pack(
                             "<BHHH", SYMBOLS.index("="), a1, a2, save_addr
@@ -187,7 +211,10 @@ class Assembler:
                     )
                 elif line.startswith("^"):
                     parts = self.tokenize(line[1:])
-                    addr = self.parse_addr(parts[0])
+                    try:
+                        addr = self.parse_addr(parts[0])
+                    except Exception as e:
+                        raise SyntaxError(f"Invalid CRSJ syntax: {line}") from e
                     if len(parts) != 1:
                         raise SyntaxError(f"Invalid CRSJ syntax: {line}")
                     self.instructions[bank_name].append(
@@ -197,17 +224,27 @@ class Assembler:
                     parts = self.tokenize(line[1:])
                     if len(parts) != 1:
                         raise SyntaxError(f"Invalid CRSL syntax: {line}")
-                    value = self.parse_value(parts[0])
+                    try:
+                        type, value = self.parse_operand_type(parts[0])
+                    except Exception as e:
+                        raise SyntaxError(f"Invalid CRSL syntax: {line}") from e
                     self.instructions[bank_name].append(
-                        struct.pack("<BB", SYMBOLS.index("<"), value).ljust(8, b"\x00")
+                        struct.pack(
+                            "<BHH", SYMBOLS.index("<"), type.value, value
+                        ).ljust(8, b"\x00")
                     )
                 elif line.startswith(">"):
                     parts = self.tokenize(line[1:])
                     if len(parts) != 1:
                         raise SyntaxError(f"Invalid CRSR syntax: {line}")
-                    value = self.parse_value(parts[0])
+                    try:
+                        type, value = self.parse_operand_type(parts[0])
+                    except Exception as e:
+                        raise SyntaxError(f"Invalid CRSR syntax: {line}") from e
                     self.instructions[bank_name].append(
-                        struct.pack("<BB", SYMBOLS.index(">"), value).ljust(8, b"\x00")
+                        struct.pack(
+                            "<BHH", SYMBOLS.index(">"), type.value, value
+                        ).ljust(8, b"\x00")
                     )
                 elif line.startswith("!"):
                     if len(line) != 1:
@@ -219,7 +256,10 @@ class Assembler:
                     parts = self.tokenize(line[1:])
                     if len(parts) != 1:
                         raise SyntaxError(f"Invalid GOSUB syntax: {line}")
-                    target = self.parse_addr(parts[0])
+                    try:
+                        target = self.parse_addr(parts[0])
+                    except Exception as e:
+                        raise SyntaxError(f"Invalid GOSUB syntax: {line}") from e
                     self.instructions[bank_name].append(
                         struct.pack("<BH", SYMBOLS.index("V"), target).ljust(8, b"\x00")
                     )
@@ -233,21 +273,26 @@ class Assembler:
                     raise SyntaxError(f"Unknown instruction: {line}")
 
     def parse_addr(self, token):
-        if token[1:].isdigit():
+        if token[1:] == "_":
+            return 0xF504  # CRS_REG
+        elif token[1:].isdigit():
             return int(token[1:])
         elif token.startswith("$0x"):
             return int(token[3:], 16)
         elif token.startswith("$0b"):
             return int(token[3:], 2)
         elif token[1:] in self.labels:
+            print(self.labels[token[1:]])
             return self.labels[token[1:]]
         elif token[1:] in self.macros:
-            return self.macros[token[1:]]
+            return self.parse_addr(self.macros[token[1:]])
         else:
             raise SyntaxError(f"Invalid address: {token}")
 
     def parse_operand_type(self, token):
-        if token.startswith("*"):
+        if token.startswith("%"):
+            return self.parse_operand_type(self.macros[token[1:]])
+        elif token.startswith("*"):
             return OperandType.ADDRESS, self.parse_value(token[1:])
         else:
             return OperandType.LITERAL, self.parse_value(token)
@@ -259,10 +304,10 @@ class Assembler:
             return int(token, 16)
         elif token.startswith("0b"):
             return int(token, 2)
-        elif token in self.labels:
-            return self.labels[token]
-        elif token in self.macros:
-            return self.macros[token]
+        elif token[1:] in self.labels:
+            return self.labels[token[1:]]
+        elif token[1:] in self.macros:
+            return self.parse_value(self.macros[token[1:]])
         else:
             raise SyntaxError(f"Invalid operand: {token}")
 

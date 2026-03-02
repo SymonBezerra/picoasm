@@ -6,4 +6,4 @@
 
 ; push green color to palette #0.1
 
-# 0xFF $0xD901
+# 0b00011100 $0xD901

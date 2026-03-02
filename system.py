@@ -32,6 +32,7 @@ class System:
     BANK_SWAP_REG = 0xF501
     VSYNC_REG = 0xF502
     PRGRAM_SAVE_REG = 0xF503
+    CRS_REG = 0xF504
 
     BLOCK_H = SCREEN_SIZE[1] // (CELLS[1] * 2)
     BLOCK_W = SCREEN_SIZE[0] // (CELLS[0] * 2)
@@ -129,6 +130,7 @@ class System:
             System.BANK_SWAP_REG: ("bank_swap_reg", False),
             System.VSYNC_REG: ("vsync_reg", True),
             System.PRGRAM_SAVE_REG: ("prgram_save_reg", False),
+            System.CRS_REG: ("crs", False),
         }
 
     def read_memory(self, addr):
@@ -146,7 +148,6 @@ class System:
     def write_memory(self, addr, value, loading_rom=False):
         for start, end, memory, protected in self.memory_map:
             if start <= addr < end:
-                print(f"{start:#04x} - {end:#04x}, addr: {addr:#04x}")
                 if protected and not loading_rom:
                     raise ValueError(f"Address {addr:#04x} is read-only")
                 offset = addr - start
@@ -214,7 +215,7 @@ class System:
             if type == 0:  # Immediate
                 value = operand
             elif type == 1:  # Memory
-                value = self.read_memory(addr)
+                value = self.read_memory(operand)
             if value is not None:
                 self.write_memory(addr, value, loading_rom)
         elif opcode == 4:  # CGTZ
@@ -234,9 +235,7 @@ class System:
             )
         elif opcode == 6:  # RET
             keys = pygame.key.get_pressed()
-            if keys[pygame.K_ESCAPE]:
-                running = False
-            elif keys[pygame.K_i]:  # up
+            if keys[pygame.K_i]:  # up
                 self.controller_reg |= 1
             elif keys[pygame.K_k]:  # down
                 self.controller_reg |= 1 << 1
@@ -258,10 +257,22 @@ class System:
             addr = int.from_bytes(instr[1:3], byteorder="little")
             self.crs = addr
         elif opcode == 10:  # CRSL
-            value = instr[1]
+            type = instr[1]
+            operand = int.from_bytes(instr[2:4], byteorder="little")
+            value = None
+            if type == 0:  # Immediate
+                value = operand
+            elif type == 1:  # Memory
+                value = self.read_memory(operand)
             self.crs = (self.crs - value) % 65536
         elif opcode == 11:  # CRSR
-            value = instr[1]
+            type = instr[1]
+            operand = int.from_bytes(instr[2:4], byteorder="little")
+            value = None
+            if type == 0:  # Immediate
+                value = operand
+            elif type == 1:  # Memory
+                value = self.read_memory(operand)
             self.crs = (self.crs + value) % 65536
         elif opcode == 12:  # VSYNC
             self.vsync_reg = 1 if CLOCK.tick(60) > 1000 else 0
@@ -283,7 +294,6 @@ class System:
         # 2x2 pixel blocks, 4 bytes per block, 8 bytes per tile, 512 tiles total (4KB VRAM)
         bg_surface0 = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
         bg_surface1 = pygame.Surface(SCREEN_SIZE, pygame.SRCALPHA)
-        print(self.palette.memory[0:4])
         for obj_index in range(BackgroundOAM.OAM_SIZE):
             # OAM: [hi, lo, palette, attributes]
             oam_base = obj_index * 4

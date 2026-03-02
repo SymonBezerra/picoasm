@@ -9,9 +9,9 @@
     + `[CEQ "=" (5)] [address (u16)] [address (u16)] [address (u16)]`
     + `[INP "," (6)]`
     + `[OUT "." (7)"]`
-    + `[CRSJ "^" (8)] [address (u16)]`
-    + `[CRSL "<" (10)] [value (u8)]`
-    + `[CRSR ">" (11)] [value (u8)]`
+    + `[CRSJ "^" (8)] [operand type (u8)] [operand (u16)]`
+    + `[CRSL "<" (10)] [operand type (u8)] [operand (u16)]`
+    + `[CRSR ">" (11)] [operand type (u8)] [operand (u16)]`
     + `[VSYNC "!" (12)]`
     + `[GOSUB "V" (13)] [address (u16)]`
     + `[RET "A" (14)]`

@@ -44,6 +44,7 @@
     + F500 → Controller
     + F501 → Bank swap
     + F502 → V-Sync flag (keep it?)
+    + F503 → Cursor (only for interpreter)
 - F510 → F51F → Audio channels
 
 - display is 32x24 (640x480)
