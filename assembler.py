@@ -154,28 +154,28 @@ class Assembler:
                     if len(parts) != 2:
                         raise SyntaxError(f"Invalid ADD syntax: {line}")
                     try:
-                        value = self.parse_value(parts[0])
+                        type, value = self.parse_operand_type(parts[0])
                         target = self.parse_addr(parts[1])
                     except Exception as e:
                         raise SyntaxError(f"Invalid ADD syntax: {line}") from e
                     self.instructions[bank_name].append(
-                        struct.pack("<BBH", SYMBOLS.index("+"), value, target).ljust(
-                            8, b"\x00"
-                        )
+                        struct.pack(
+                            "<BBBH", SYMBOLS.index("+"), type.value, value, target
+                        ).ljust(8, b"\x00")
                     )
                 elif line.startswith("-"):
                     parts = self.tokenize(line[1:])
                     if len(parts) != 2:
                         raise SyntaxError(f"Invalid SUB syntax: {line}")
                     try:
-                        value = self.parse_value(parts[0])
+                        type, value = self.parse_operand_type(parts[0])
                         target = self.parse_addr(parts[1])
                     except Exception as e:
                         raise SyntaxError(f"Invalid SUB syntax: {line}") from e
                     self.instructions[bank_name].append(
-                        struct.pack("<BBH", SYMBOLS.index("-"), value, target).ljust(
-                            8, b"\x00"
-                        )
+                        struct.pack(
+                            "<BBBH", SYMBOLS.index("-"), type.value, value, target
+                        ).ljust(8, b"\x00")
                     )
                 elif line.startswith("?"):
                     parts = self.tokenize(line[1:])

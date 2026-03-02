@@ -20,26 +20,26 @@
 - `!` → tells if a full frame has passed (V-Sync routine)
 
 - `%` → macro specifier
-  + `%STACK_POINTER #256` → interpreter substitutes `STACK_POINTER` symbol for `#256`
+  + `%STACK_POINTER $256` → interpreter substitutes `STACK_POINTER` symbol for `#256`
 
 - `@ [value] [label]` → goto (conditional)
-    + `@ *256 :marker` → if #256 > 0, goto line of `marker`
+    + `@ *256 :marker` → if $256 > 0, goto line of `marker`
 	+ `@ 1 :marker` → unconditional goto
 	
-- `= [value 1] [value 2] [addr]` → equality comparison
-  + `= *256 *257 #258` → compare #256 to #257, if true push 1 to #258, else push 0
+- `= [addr 1] [addr 2] [save addr]` → equality comparison
+  + `= $256 $257 $258` → compare $256 to $257, if true push 1 to $$258, else push 0
   
-- `? [value 1] [addr]` → compare if greater than zero
-  + `? *256 #257` → compare if the value of #256 is greater than zero, and push result to #257
+- `? [addr] [ save addr]` → compare if greater than zero
+  + `? $256 $257` → compare if the value of $256 is greater than zero, and push result to $257
 
 - `# [value] [addr]` → push bitwise value to address
-    + `$ *257 #256` → push value of #257 to #256
+    + `$ *257 $256` → push value of $257 to $256
 
 - `,` → get user input
 - `.` → output VRAM
 
 - `+ [value] [addr]` → addition
-  + `+ *256 #257` → add value of #256 to #257
+  + `+ *256 $257` → add value of $256 to $257
   
 - `- [value] [addr]` → subtraction
 

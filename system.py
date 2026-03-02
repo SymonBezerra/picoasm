@@ -198,16 +198,34 @@ class System:
             elif type == 1:  # Memory
                 value = self.read_memory(operand)
 
-            if value is not None and value > 0:
+            if value is not None and value != 0:
                 self.pc = addr
         elif opcode == 1:  # ADD
-            value = instr[1]
-            addr = int.from_bytes(instr[2:4], byteorder="little")
-            self.write_memory(addr, (self.read_memory(addr) + value) % 256, loading_rom)
+            type = instr[1]
+            value = instr[2]
+            addr = int.from_bytes(instr[3:5], byteorder="little")
+            final_value = None
+            if type == 0:  # Immediate
+                final_value = value
+            elif type == 1:  # Memory
+                final_value = self.read_memory(value)
+            if final_value is not None:
+                self.write_memory(
+                    addr, (self.read_memory(addr) + final_value) & 0xFF, loading_rom
+                )
         elif opcode == 2:  # SUB
-            value = instr[1]
-            addr = int.from_bytes(instr[2:4], byteorder="little")
-            self.write_memory(addr, (self.read_memory(addr) - value) % 256, loading_rom)
+            type = instr[1]
+            value = instr[2]
+            addr = int.from_bytes(instr[3:5], byteorder="little")
+            final_value = None
+            if type == 0:  # Immediate
+                final_value = value
+            elif type == 1:  # Memory
+                final_value = self.read_memory(value)
+            if final_value is not None:
+                self.write_memory(
+                    addr, (self.read_memory(addr) - final_value) & 0xFF, loading_rom
+                )
         elif opcode == 3:  # MOV
             type = instr[1]
             operand = int.from_bytes(instr[2:4], byteorder="little")
@@ -264,7 +282,6 @@ class System:
         elif opcode == 8:  # CRSJ
             addr = int.from_bytes(instr[1:3], byteorder="little")
             self.crs = addr
-            print(f"CRSJ: {self.crs:#04x}")
         elif opcode == 9:  # CRSL
             type = instr[1]
             operand = int.from_bytes(instr[2:4], byteorder="little")
@@ -275,7 +292,6 @@ class System:
                 value = self.read_memory(operand)
             self.crs -= value
             self.crs %= 65536
-            print(f"CRSL: {self.crs:#04x}")
         elif opcode == 10:  # CRSR
             type = instr[1]
             operand = int.from_bytes(instr[2:4], byteorder="little")
@@ -286,7 +302,6 @@ class System:
                 value = self.read_memory(operand)
             self.crs += value
             self.crs %= 65536
-            print(f"CRSR: {self.crs:#04x}")
         elif opcode == 11:  # VSYNC
             self.vsync_reg = 1 if CLOCK.tick(60) > 1000 else 0
         elif opcode == 12:  # GOSUB

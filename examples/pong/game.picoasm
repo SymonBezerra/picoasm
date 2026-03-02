@@ -19,14 +19,39 @@
 
 :BLIT
 
-^ $0x8000
-> %VRAM_YSHIFT
-# 10 $_
+# %CONTENT_PAD_LEN $0xB0A0
+# %CONTENT_PAD_Y $0xB0A1
 
+:DRAW_PAD
+
+# *0xB0A0 $0xB0A2
+
+:SHIFT_VRAM_LOOP
+^ $0x8000
+> 4
+- 1 $0xB0A2
+@ *0xB0A2 :SHIFT_VRAM_LOOP
+> %VRAM_YSHIFT
+; writes Y pos to VRAM's position
+# *0xB0A1 $_
+
+# *0xB0A0 $0xB0A2
+
+:SHIFT_OAM_LOOP
 ^ $0xD000
+> 4
+- 1 $0xB0A2
+@ *0xB0A2 :SHIFT_OAM_LOOP
 > %ATTR_SHIFT
+; makes VRAM block visible
 # 0b00001000 $_
 
+; it is wrapping around on both here!
+- 1 $0xB0A0
+- 1 $0xB0A1
+
+@ *0xB0A0 :DRAW_PAD
 .
+!
 
 @ 1 :BLIT
