@@ -188,19 +188,20 @@ class System:
 
     def execute_instr(self, instr, loading_rom=False):
         opcode = instr[0]
-        if opcode == 0:  # JMP
+        if opcode == 0:  # LABEL
+            return  # no operation needed for labels at runtime
+        elif opcode == 1:  # JMP
             type = instr[1]
             operand = int.from_bytes(instr[2:4], byteorder="little")
             addr = int.from_bytes(instr[4:6], byteorder="little")
             value = None
             if type == 0:  # Immediate
-                value = operand
+                value = operand & 0xFF
             elif type == 1:  # Memory
-                value = self.read_memory(operand)
-
+                value = self.read_memory(operand) & 0xFF
             if value is not None and value != 0:
                 self.pc = addr
-        elif opcode == 1:  # ADD
+        elif opcode == 2:  # ADD
             type = instr[1]
             value = instr[2]
             addr = int.from_bytes(instr[3:5], byteorder="little")
@@ -213,7 +214,7 @@ class System:
                 self.write_memory(
                     addr, (self.read_memory(addr) + final_value) & 0xFF, loading_rom
                 )
-        elif opcode == 2:  # SUB
+        elif opcode == 3:  # SUB
             type = instr[1]
             value = instr[2]
             addr = int.from_bytes(instr[3:5], byteorder="little")
@@ -226,7 +227,7 @@ class System:
                 self.write_memory(
                     addr, (self.read_memory(addr) - final_value) & 0xFF, loading_rom
                 )
-        elif opcode == 3:  # MOV
+        elif opcode == 4:  # MOV
             type = instr[1]
             operand = int.from_bytes(instr[2:4], byteorder="little")
             addr_type = instr[4]
@@ -244,13 +245,13 @@ class System:
                 target_addr = self.read_memory(addr)
             if value is not None and target_addr is not None:
                 self.write_memory(target_addr, value, loading_rom)
-        elif opcode == 4:  # CGTZ
+        elif opcode == 5:  # CGTZ
             addr1 = int.from_bytes(instr[1:3], byteorder="little")
             addr2 = int.from_bytes(instr[3:5], byteorder="little")
             self.write_memory(
                 addr2, 1 if self.read_memory(addr1) > 0 else 0, loading_rom
             )
-        elif opcode == 5:  # CEQ
+        elif opcode == 6:  # CEQ
             addr1 = int.from_bytes(instr[1:3], byteorder="little")
             addr2 = int.from_bytes(instr[3:5], byteorder="little")
             addr3 = int.from_bytes(instr[5:7], byteorder="little")
@@ -259,7 +260,7 @@ class System:
                 1 if self.read_memory(addr1) == self.read_memory(addr2) else 0,
                 loading_rom,
             )
-        elif opcode == 6:  # RET
+        elif opcode == 7:  # RET
             keys = pygame.key.get_pressed()
             if keys[pygame.K_i]:  # up
                 self.controller_reg |= 1
@@ -277,12 +278,12 @@ class System:
                 self.controller_reg |= 1 << 6
             elif keys[pygame.K_RETURN]:  # Start
                 self.controller_reg |= 1 << 7
-        elif opcode == 7:  # OUT
+        elif opcode == 8:  # OUT
             self.output_video()
-        elif opcode == 8:  # CRSJ
+        elif opcode == 9:  # CRSJ
             addr = int.from_bytes(instr[1:3], byteorder="little")
             self.crs = addr
-        elif opcode == 9:  # CRSL
+        elif opcode == 10:  # CRSL
             type = instr[1]
             operand = int.from_bytes(instr[2:4], byteorder="little")
             value = None
@@ -292,7 +293,7 @@ class System:
                 value = self.read_memory(operand)
             self.crs -= value
             self.crs %= 65536
-        elif opcode == 10:  # CRSR
+        elif opcode == 11:  # CRSR
             type = instr[1]
             operand = int.from_bytes(instr[2:4], byteorder="little")
             value = None
@@ -302,15 +303,15 @@ class System:
                 value = self.read_memory(operand)
             self.crs += value
             self.crs %= 65536
-        elif opcode == 11:  # VSYNC
+        elif opcode == 12:  # VSYNC
             self.vsync_reg = 1 if CLOCK.tick(60) > 1000 else 0
-        elif opcode == 12:  # GOSUB
+        elif opcode == 13:  # GOSUB
             addr = int.from_bytes(instr[1:3], byteorder="little")
             self.write_memory(self.sp - 1, ((self.pc + 1) >> 8) & 0xFF, loading_rom)
             self.write_memory(self.sp, (self.pc + 1) & 0xFF, loading_rom)
             self.sp -= 2
             self.pc = addr - 1
-        elif opcode == 13:  # RET
+        elif opcode == 14:  # RET
             self.sp += 2
             self.pc = (self.read_memory(self.sp - 1) << 8) | self.read_memory(
                 self.sp - 2

@@ -21,9 +21,10 @@ class OperandType(Enum):
 
 
 SYMBOLS = (
-    "@",  # JMP 0,
-    "+",  # ADD 1,
-    "-",  # SUB 2,
+    ":",  # LABEL ,
+    "@",  # JMP 1,
+    "+",  # ADD 2,
+    "-",  # SUB ,
     "#",  # MOV 3,
     "?",  # CGTZ 4,
     "=",  # CEQ 5,
@@ -112,9 +113,11 @@ class Assembler:
                     macro_name = tokens[0]
                     macro_value = tokens[1]
                     self.macros[macro_name] = macro_value
-                    # self.macros[line[1:]] = self.tokenize(line[1:])[1:]
                 elif line.startswith(":"):
                     self.labels[line[1:]] = len(self.instructions[bank_name])
+                    self.instructions[bank_name].append(
+                        struct.pack("<B", SYMBOLS.index(":")).ljust(8, b"\x00")
+                    )
                 elif line.startswith("@"):
                     # @ [literal or address value] [label or address]
                     parts = self.tokenize(line[1:])
