@@ -4,7 +4,8 @@
 
 - approximately 64KB address space (16 bit addressing)
 
-- Registers: PC, SP, CRS (BF Cursor)
+- Registers: PC, SP, X, Y, A
+    + all registers are 16-bit
 
 ## Memory Map
 

@@ -188,7 +188,7 @@ class System:
 
     def execute_instr(self, instr, loading_rom=False):
         opcode = instr[0]
-        if opcode == 0:  # LABEL
+        if opcode == 0:  # NOP
             return  # no operation needed for labels at runtime
         elif opcode == 1:  # JMP
             type = instr[1]
