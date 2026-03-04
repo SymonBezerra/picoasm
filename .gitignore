@@ -5,6 +5,7 @@ venv/
 !examples/**/*.picoasm
 *.bin
 *.chr
+*.prg
 *.md
 !spec/*.md
 !README.md

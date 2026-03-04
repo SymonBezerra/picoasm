@@ -1,8 +1,6 @@
 from argparse import ArgumentParser
-from io import BytesIO
 import os
 from pathlib import Path
-import struct
 
 import pygame
 
@@ -12,6 +10,7 @@ from fg_oam import ForegroundOAM
 from palette import PaletteRAM
 from prg_ram import ProgramRAM
 from prg_rom import ProgramROM
+import prg_rom
 from stack import StackRAM
 from vram import VideoRAM
 from wram import WorkRAM
@@ -32,7 +31,6 @@ class System:
     BANK_SWAP_REG = 0xF501
     VSYNC_REG = 0xF502
     PRGRAM_SAVE_REG = 0xF503
-    CRS_REG = 0xF504
 
     BLOCK_H = SCREEN_SIZE[1] // (CELLS[1] * 2)
     BLOCK_W = SCREEN_SIZE[0] // (CELLS[0] * 2)
@@ -64,7 +62,6 @@ class System:
         self.vsync_reg = 0x00
         self.prgram_save_reg = 0x00
 
-        self.crs = 0x0000  # Code read position
         self.pc = 0x0000  # Program counter
         self.sp = StackRAM.START_ADDR + StackRAM.STACK_SIZE - 1  # Stack pointer
 
@@ -130,7 +127,6 @@ class System:
             System.BANK_SWAP_REG: ("bank_swap_reg", False),
             System.VSYNC_REG: ("vsync_reg", True),
             System.PRGRAM_SAVE_REG: ("prgram_save_reg", False),
-            System.CRS_REG: ("crs", False),
         }
 
     def read_memory(self, addr):
@@ -162,7 +158,6 @@ class System:
         raise ValueError(f"Address {addr:#04x} is unused")
 
     def run(self):
-        self.pc = 0
         running = True
         while self.pc < sum(self.prg_rom.banks_len) and running:
             for event in pygame.event.get():
@@ -178,8 +173,6 @@ class System:
             ]
             self.execute_instr(instr)
             self.pc += 1
-            if self.bank_swap_reg:
-                self.swap_banks()
             if self.prgram_save_reg:
                 with open(self.path.replace(".bin", "_save.bin"), "wb") as f:
                     f.write(self.prg_ram.memory)
@@ -407,13 +400,11 @@ class System:
             vram_data = self.vram.memory[vram_base : vram_base + 4]
             tile_x = vram_data[2]
             tile_y = vram_data[3]
-            # CHR-ROM: 8 bytes per block
             chr_data = self.chr_rom[tile_index]
             for py in range(2):
                 for px in range(2):
                     sub = py * 2 + px
 
-                    # Apply flips when sampling CHR data
                     sample_px = (1 - px) if hflip else px
                     sample_py = (1 - py) if vflip else py
                     sample_sub = sample_py * 2 + sample_px
@@ -455,49 +446,24 @@ class System:
 
         return (r, g, b)
 
-    def swap_banks(self):
-        def read(fmt):
-            size = struct.calcsize(fmt)
-            data = self.bytes.read(size)
-            if not data:
-                raise EOFError("End of file reached")
-            return struct.unpack(fmt, data)[0]
-
-        with open(Path(os.path.join(os.getcwd(), self.path)), "rb") as f:
-            self.bytes = BytesIO(f.read())
-        # skip header and bank lengths
-        self.bytes.seek(8)
-        # read the new bank data
-        for _ in range(self.bank_swap_reg - 1):
-            size = read("<H")  # skip size of previous banks
-            self.bytes.seek(size * 8, 1)  # skip previous bank data
-        bank_size = read("<H")  # Read the size of the bank
-        bank_data = [
-            read("<Q") for _ in range(bank_size)
-        ]  # Read the instructions as 64-bit values
-        rom = b"".join(instr.to_bytes(8, "little") for instr in bank_data)
-
-        start = ProgramROM.PRGROM_BANKS[1]
-        end = start + len(rom)
-
-        max_end = ProgramROM.PRGROM_BANKS[1] + ProgramROM.BANK_SIZE
-
-        if end > max_end:
-            rom = rom[: max_end - start]  # truncate like real hardware
-
-        self.prg_rom.memory[start : start + len(rom)] = rom
-        self.prg_rom.swap_bank = 0  # reset the bank swap flag
-
-    def load_chars(self):
-        self.pc = 0
-        while self.pc < self.chr_rom.len:
-            instr = self.chr_rom.program[self.pc * 8 : self.pc * 8 + 8]
-            self.execute_instr(instr, loading_rom=True)
-            self.pc += 1
+    def load_rom(self):
+        with open(self.path, "rb") as f:
+            header = f.read(7)
+            if header != b"picoASM":
+                raise ValueError("Invalid ROM header, expected 'picoASM'")
+            chr_len = int.from_bytes(f.read(2), byteorder="little")
+            chr_data = f.read(chr_len)
+            # read directly into CHR ROM memory, without casting to int
+            self.chr_rom.memory[:chr_len] = chr_data
+            prg_rom_entrypoint = int.from_bytes(f.read(2), byteorder="little")
+            self.pc = prg_rom_entrypoint
+            prg_rom = f.read()
+            # read directly into PRG ROM memory, without casting to int
+            self.prg_rom.memory[: len(prg_rom)] = prg_rom
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
     console = System(args.FILE)
-    console.load_chars()
+    console.load_rom()
     console.run()

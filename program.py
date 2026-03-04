@@ -10,13 +10,8 @@ from subroutine import SubRoutine
 class Program:
     MAIN = "__main"
 
-    def __init__(self, paths):
-        self.lines = list()
-        for path in paths:
-            with open(Path(os.path.join(os.getcwd(), path)), "r") as f:
-                self.lines.append(f.readlines())
-
-            self.subroutines = defaultdict(list)
+    def __init__(self):
+        self.subroutines = defaultdict(list)
 
     def __lshift__(self, other: SubRoutine):
         if not isinstance(other, SubRoutine):
@@ -43,7 +38,7 @@ class Program:
                     raise ValueError(
                         "GOSUB cannot call the entry point subroutine (recursive calls not supported)"
                     )
-                return struct.pack("<BH", OPCODES["JMP"][0], subroutines[target])
+                return struct.pack("<BH", OPCODES["GOSUB"][0], subroutines[target])
             else:
                 return struct.pack(OPCODES[opcode][2], OPCODES[opcode][0], *instr[1:])
 
