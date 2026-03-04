@@ -159,7 +159,7 @@ class System:
 
     def run(self):
         running = True
-        while self.pc < sum(self.prg_rom.banks_len) and running:
+        while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
@@ -172,7 +172,8 @@ class System:
                 + 8
             ]
             self.execute_instr(instr)
-            self.pc += 1
+            if self.pc < len(self.prg_rom.memory) // 8 - 1:
+                self.pc += 1
             if self.prgram_save_reg:
                 with open(self.path.replace(".bin", "_save.bin"), "wb") as f:
                     f.write(self.prg_ram.memory)
