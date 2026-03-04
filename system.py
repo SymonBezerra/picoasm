@@ -7,10 +7,10 @@ import pygame
 from bg_oam import BackgroundOAM
 from chr_rom import CharacterROM
 from fg_oam import ForegroundOAM
+from opcodes import OPCODES
 from palette import PaletteRAM
 from prg_ram import ProgramRAM
 from prg_rom import ProgramROM
-import prg_rom
 from stack import StackRAM
 from vram import VideoRAM
 from wram import WorkRAM
@@ -37,11 +37,11 @@ class System:
 
     def __init__(self, path):
         self.path = os.path.join(Path(__file__).parent, path)
-        self.prg_rom = ProgramROM(self.path)
+        self.prg_rom = ProgramROM()
         # VRAM
         self.vram = VideoRAM()
         # CHRROM
-        self.chr_rom = CharacterROM(self.path)
+        self.chr_rom = CharacterROM()
         # WRAM
         self.wram = WorkRAM()
         # Palettes (defined by program, not stored in ROM)
@@ -106,7 +106,7 @@ class System:
                 PaletteRAM.START_ADDR,
                 PaletteRAM.START_ADDR + PaletteRAM.SIZE,
                 self.palette.memory,
-                True,
+                False,
             ),
             (
                 StackRAM.START_ADDR,
@@ -125,7 +125,7 @@ class System:
         self.registers_map = {
             System.CONTROLLER_REG: ("controller_reg", True),
             System.BANK_SWAP_REG: ("bank_swap_reg", False),
-            System.VSYNC_REG: ("vsync_reg", True),
+            System.VSYNC_REG: ("vsync_reg", False),
             System.PRGRAM_SAVE_REG: ("prgram_save_reg", False),
         }
 
@@ -141,17 +141,17 @@ class System:
                 return getattr(self, reg_name)
         raise ValueError(f"Address {addr:#04x} is unused")
 
-    def write_memory(self, addr, value, loading_rom=False):
+    def write_memory(self, addr, value):
         for start, end, memory, protected in self.memory_map:
             if start <= addr < end:
-                if protected and not loading_rom:
+                if protected:
                     raise ValueError(f"Address {addr:#04x} is read-only")
                 offset = addr - start
                 memory[offset] = value
                 return
         for reg_addr, (reg_name, protected) in self.registers_map.items():
             if addr == reg_addr:
-                if protected and not loading_rom:
+                if protected:
                     raise ValueError(f"Address {addr:#04x} is read-only")
                 setattr(self, reg_name, value)
                 return
@@ -180,138 +180,333 @@ class System:
                 self.prgram_save_reg = 0
         pygame.quit()
 
-    def execute_instr(self, instr, loading_rom=False):
+    def execute_instr(self, instr):
         opcode = instr[0]
-        if opcode == 0:  # NOP
-            return  # no operation needed for labels at runtime
-        elif opcode == 1:  # JMP
-            type = instr[1]
-            operand = int.from_bytes(instr[2:4], byteorder="little")
-            addr = int.from_bytes(instr[4:6], byteorder="little")
-            value = None
-            if type == 0:  # Immediate
-                value = operand & 0xFF
-            elif type == 1:  # Memory
-                value = self.read_memory(operand) & 0xFF
-            if value is not None and value != 0:
-                self.pc = addr
-        elif opcode == 2:  # ADD
-            type = instr[1]
-            value = instr[2]
-            addr = int.from_bytes(instr[3:5], byteorder="little")
-            final_value = None
-            if type == 0:  # Immediate
-                final_value = value
-            elif type == 1:  # Memory
-                final_value = self.read_memory(value)
-            if final_value is not None:
-                self.write_memory(
-                    addr, (self.read_memory(addr) + final_value) & 0xFF, loading_rom
-                )
-        elif opcode == 3:  # SUB
-            type = instr[1]
-            value = instr[2]
-            addr = int.from_bytes(instr[3:5], byteorder="little")
-            final_value = None
-            if type == 0:  # Immediate
-                final_value = value
-            elif type == 1:  # Memory
-                final_value = self.read_memory(value)
-            if final_value is not None:
-                self.write_memory(
-                    addr, (self.read_memory(addr) - final_value) & 0xFF, loading_rom
-                )
-        elif opcode == 4:  # MOV
-            type = instr[1]
-            operand = int.from_bytes(instr[2:4], byteorder="little")
-            addr_type = instr[4]
-            addr = int.from_bytes(instr[5:7], byteorder="little")
-            value = None
-            target_addr = None
-            if type == 0:  # Immediate
-                value = operand
-            elif type == 1:  # Memory
-                value = self.read_memory(operand)
-
-            if addr_type == 0:  # Immediate
-                target_addr = addr
-            elif addr_type == 1:  # Memory
-                target_addr = self.read_memory(addr)
-            if value is not None and target_addr is not None:
-                self.write_memory(target_addr, value, loading_rom)
-        elif opcode == 5:  # CGTZ
+        if opcode == OPCODES["NOP"][0]:  # NOP
+            return
+        if opcode == OPCODES["JMP"][0]:  # JMP
+            target = int.from_bytes(instr[1:3], byteorder="little")
+            self.pc = target - 1  # -1 because we'll increment after execution
+        elif opcode == OPCODES["ADD"][0]:  # ADD
             addr1 = int.from_bytes(instr[1:3], byteorder="little")
             addr2 = int.from_bytes(instr[3:5], byteorder="little")
-            self.write_memory(
-                addr2, 1 if self.read_memory(addr1) > 0 else 0, loading_rom
-            )
-        elif opcode == 6:  # CEQ
+            target_addr = int.from_bytes(instr[5:7], byteorder="little")
+            value = (self.read_memory(addr1) + self.read_memory(addr2)) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["ADD_X"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = (self.read_memory(addr) + self.x) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["ADD_Y"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = (self.read_memory(addr) + self.y) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["ADD_A"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = (self.read_memory(addr) + self.a) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["SUB"][0]:  # SUB
             addr1 = int.from_bytes(instr[1:3], byteorder="little")
             addr2 = int.from_bytes(instr[3:5], byteorder="little")
-            addr3 = int.from_bytes(instr[5:7], byteorder="little")
-            self.write_memory(
-                addr3,
-                1 if self.read_memory(addr1) == self.read_memory(addr2) else 0,
-                loading_rom,
-            )
-        elif opcode == 7:  # RET
+            target_addr = int.from_bytes(instr[5:7], byteorder="little")
+            value = (self.read_memory(addr1) - self.read_memory(addr2)) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["SUB_X"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = (self.read_memory(addr) - self.x) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["SUB_Y"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = (self.read_memory(addr) - self.y) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["SUB_A"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = (self.read_memory(addr) - self.a) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["MULT"][0]:  # MULT
+            addr1 = int.from_bytes(instr[1:3], byteorder="little")
+            addr2 = int.from_bytes(instr[3:5], byteorder="little")
+            target_addr = int.from_bytes(instr[5:7], byteorder="little")
+            value = (self.read_memory(addr1) * self.read_memory(addr2)) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["MULT_X"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = (self.read_memory(addr) * self.x) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["MULT_Y"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = (self.read_memory(addr) * self.y) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["MULT_A"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = (self.read_memory(addr) * self.a) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["DIV"][0]:  # DIV
+            addr1 = int.from_bytes(instr[1:3], byteorder="little")
+            addr2 = int.from_bytes(instr[3:5], byteorder="little")
+            target_addr = int.from_bytes(instr[5:7], byteorder="little")
+            divisor = self.read_memory(addr2)
+            value = (self.read_memory(addr1) // divisor) & 0xFF if divisor != 0 else 0
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["DIV_X"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            divisor = self.x
+            value = (self.read_memory(addr) // divisor) & 0xFF if divisor != 0 else 0
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["DIV_Y"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            divisor = self.y
+            value = (self.read_memory(addr) // divisor) & 0xFF if divisor != 0 else 0
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["DIV_A"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            divisor = self.a
+            value = (self.read_memory(addr) // divisor) & 0xFF if divisor != 0 else 0
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["MOD"][0]:  # MOD
+            addr1 = int.from_bytes(instr[1:3], byteorder="little")
+            addr2 = int.from_bytes(instr[3:5], byteorder="little")
+            target_addr = int.from_bytes(instr[5:7], byteorder="little")
+            divisor = self.read_memory(addr2)
+            value = (self.read_memory(addr1) % divisor) & 0xFF if divisor != 0 else 0
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["MOD_X"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            divisor = self.x
+            value = (self.read_memory(addr) % divisor) & 0xFF if divisor != 0 else 0
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["MOD_Y"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            divisor = self.y
+            value = (self.read_memory(addr) % divisor) & 0xFF if divisor != 0 else 0
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["MOD_A"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            divisor = self.a
+            value = (self.read_memory(addr) % divisor) & 0xFF if divisor != 0 else 0
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["LSHIFT"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            shift_amount = instr[3]
+            value = (self.read_memory(addr) << shift_amount) & 0xFF
+            self.write_memory(addr, value)
+        elif opcode == OPCODES["LSHIFT_X"]:
+            shift_amount = instr[1]
+            self.x = (self.x << shift_amount) & 0xFF
+        elif opcode == OPCODES["LSHIFT_Y"]:
+            shift_amount = instr[1]
+            self.y = (self.y << shift_amount) & 0xFF
+        elif opcode == OPCODES["LSHIFT_A"]:
+            shift_amount = instr[1]
+            self.a = (self.a << shift_amount) & 0xFF
+        elif opcode == OPCODES["RSHIFT"]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            shift_amount = instr[3]
+            value = (self.read_memory(addr) >> shift_amount) & 0xFF
+            self.write_memory(addr, value)
+        elif opcode == OPCODES["RSHIFT_X"]:
+            shift_amount = instr[1]
+            self.x = (self.x >> shift_amount) & 0xFF
+        elif opcode == OPCODES["RSHIFT_Y"]:
+            shift_amount = instr[1]
+            self.y = (self.y >> shift_amount) & 0xFF
+        elif opcode == OPCODES["RSHIFT_A"]:
+            shift_amount = instr[1]
+            self.a = (self.a >> shift_amount) & 0xFF
+        elif opcode == OPCODES["AND"][0]:  # AND
+            addr1 = int.from_bytes(instr[1:3], byteorder="little")
+            addr2 = int.from_bytes(instr[3:5], byteorder="little")
+            target_addr = int.from_bytes(instr[5:7], byteorder="little")
+            value = self.read_memory(addr1) & self.read_memory(addr2)
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["AND_X"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = self.read_memory(addr) & self.x
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["AND_Y"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = self.read_memory(addr) & self.y
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["AND_A"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = self.read_memory(addr) & self.a
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["OR"][0]:
+            addr1 = int.from_bytes(instr[1:3], byteorder="little")
+            addr2 = int.from_bytes(instr[3:5], byteorder="little")
+            target_addr = int.from_bytes(instr[5:7], byteorder="little")
+            value = self.read_memory(addr1) | self.read_memory(addr2)
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["OR_X"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = self.read_memory(addr) | self.x
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["OR_Y"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = self.read_memory(addr) | self.y
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["OR_A"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = self.read_memory(addr) | self.a
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["NOT"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = (~self.read_memory(addr)) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["NOT_X"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            value = (~self.read_memory(addr)) & 0xFF
+            self.x = value
+        elif opcode == OPCODES["NOT_Y"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            value = (~self.read_memory(addr)) & 0xFF
+            self.y = value
+        elif opcode == OPCODES["NOT_A"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            value = (~self.read_memory(addr)) & 0xFF
+            self.a = value
+        elif opcode == OPCODES["XOR"][0]:
+            addr1 = int.from_bytes(instr[1:3], byteorder="little")
+            addr2 = int.from_bytes(instr[3:5], byteorder="little")
+            target_addr = int.from_bytes(instr[5:7], byteorder="little")
+            value = self.read_memory(addr1) ^ self.read_memory(addr2)
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["XOR_X"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = self.read_memory(addr) ^ self.x
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["XOR_Y"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = self.read_memory(addr) ^ self.y
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["XOR_A"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = self.read_memory(addr) ^ self.a
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["XNOR"][0]:
+            addr1 = int.from_bytes(instr[1:3], byteorder="little")
+            addr2 = int.from_bytes(instr[3:5], byteorder="little")
+            target_addr = int.from_bytes(instr[5:7], byteorder="little")
+            value = ~(self.read_memory(addr1) ^ self.read_memory(addr2)) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["XNOR_X"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = ~(self.read_memory(addr) ^ self.x) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["XNOR_Y"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = ~(self.read_memory(addr) ^ self.y) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["XNOR_A"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = ~(self.read_memory(addr) ^ self.a) & 0xFF
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["MOV"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            target_addr = int.from_bytes(instr[3:5], byteorder="little")
+            value = self.read_memory(addr)
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["MOV_X"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            value = self.read_memory(addr)
+            self.x = value
+        elif opcode == OPCODES["MOV_Y"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            value = self.read_memory(addr)
+            self.y = value
+        elif opcode == OPCODES["MOV_A"][0]:
+            addr = int.from_bytes(instr[1:3], byteorder="little")
+            value = self.read_memory(addr)
+            self.a = value
+        elif opcode == OPCODES["LMOV"][0]:
+            value = instr[1]
+            target_addr = int.from_bytes(instr[2:4], byteorder="little")
+            self.write_memory(target_addr, value)
+        elif opcode == OPCODES["LMOV_X"][0]:
+            value = instr[1]
+            self.x = value
+        elif opcode == OPCODES["LMOV_Y"][0]:
+            value = instr[1]
+            self.y = value
+        elif opcode == OPCODES["LMOV_A"][0]:
+            value = instr[1]
+            self.a = value
+        elif opcode == OPCODES["INPUT"][0]:
             keys = pygame.key.get_pressed()
+            controller_state = 0
             if keys[pygame.K_i]:  # up
-                self.controller_reg |= 1
-            elif keys[pygame.K_k]:  # down
-                self.controller_reg |= 1 << 1
-            elif keys[pygame.K_j]:  # left
-                self.controller_reg |= 1 << 2
-            elif keys[pygame.K_l]:  # right
-                self.controller_reg |= 1 << 3
-            elif keys[pygame.K_z]:  # B
-                self.controller_reg |= 1 << 4
-            elif keys[pygame.K_x]:  # A
-                self.controller_reg |= 1 << 5
-            elif keys[pygame.K_SPACE]:  # Select
-                self.controller_reg |= 1 << 6
-            elif keys[pygame.K_RETURN]:  # Start
-                self.controller_reg |= 1 << 7
-        elif opcode == 8:  # OUT
+                controller_state |= 1
+            if keys[pygame.K_k]:  # down
+                controller_state |= 1 << 1
+            if keys[pygame.K_j]:  # left
+                controller_state |= 1 << 2
+            if keys[pygame.K_l]:  # right
+                controller_state |= 1 << 3
+            if keys[pygame.K_z]:  # B
+                controller_state |= 1 << 4
+            if keys[pygame.K_x]:  # A
+                controller_state |= 1 << 5
+            if keys[pygame.K_SPACE]:  # Select
+                controller_state |= 1 << 6
+            if keys[pygame.K_RETURN]:  # Start
+                controller_state |= 1 << 7
+            self.write_memory(System.CONTROLLER_REG, controller_state)
+        elif opcode == OPCODES["OUTPUT"][0]:
             self.output_video()
-        elif opcode == 9:  # CRSJ
-            addr = int.from_bytes(instr[1:3], byteorder="little")
-            self.crs = addr
-        elif opcode == 10:  # CRSL
-            type = instr[1]
-            operand = int.from_bytes(instr[2:4], byteorder="little")
-            value = None
-            if type == 0:  # Immediate
-                value = operand
-            elif type == 1:  # Memory
-                value = self.read_memory(operand)
-            self.crs -= value
-            self.crs %= 65536
-        elif opcode == 11:  # CRSR
-            type = instr[1]
-            operand = int.from_bytes(instr[2:4], byteorder="little")
-            value = None
-            if type == 0:  # Immediate
-                value = operand
-            elif type == 1:  # Memory
-                value = self.read_memory(operand)
-            self.crs += value
-            self.crs %= 65536
-        elif opcode == 12:  # VSYNC
-            self.vsync_reg = 1 if CLOCK.tick(60) > 1000 else 0
-        elif opcode == 13:  # GOSUB
-            addr = int.from_bytes(instr[1:3], byteorder="little")
-            self.write_memory(self.sp - 1, ((self.pc + 1) >> 8) & 0xFF, loading_rom)
-            self.write_memory(self.sp, (self.pc + 1) & 0xFF, loading_rom)
-            self.sp -= 2
-            self.pc = addr - 1
-        elif opcode == 14:  # RET
-            self.sp += 2
-            self.pc = (self.read_memory(self.sp - 1) << 8) | self.read_memory(
-                self.sp - 2
-            )
+        elif opcode == OPCODES["VSYNC"][0]:
+            vsync_flag = CLOCK.tick(60) > 1000
+            self.write_memory(System.VSYNC_REG, 1 if vsync_flag else 0)
+        elif opcode == OPCODES["GOSUB"][0]:
+            lo_byte = instr[1]
+            hi_byte = instr[2]
+            target = (hi_byte << 8) | lo_byte
+            pc_hibyte = (self.pc + 1) >> 8
+            pc_lobyte = (self.pc + 1) & 0xFF
+            self.stack.memory[self.sp] = pc_hibyte
+            self.sp -= 1
+            self.stack.memory[self.sp] = pc_lobyte
+            self.sp -= 1
+            self.pc = target - 1  # -1 because we'll increment after execution
+        elif opcode == OPCODES["RET"][0]:
+            self.sp += 1
+            pc_lobyte = self.stack.memory[self.sp]
+            self.sp += 1
+            pc_hibyte = self.stack.memory[self.sp]
+            self.pc = (
+                (pc_hibyte << 8) | pc_lobyte
+            ) - 1  # -1 because we'll increment after execution
+        elif opcode == OPCODES["LABEL"][0]:
+            return  # no operation needed for labels at runtime
         else:
-            raise ValueError(f"Unknown opcode: {opcode}")
+            raise ValueError(f"Unknown opcode {opcode:#02x} at PC {self.pc:#04x}")
 
     def output_video(self):
         # 2x2 pixel blocks, 4 bytes per block, 8 bytes per tile, 512 tiles total (4KB VRAM)
@@ -401,10 +596,9 @@ class System:
             vram_data = self.vram.memory[vram_base : vram_base + 4]
             tile_x = vram_data[2]
             tile_y = vram_data[3]
-            chr_data = self.chr_rom[tile_index]
+            chr_data = self.chr_rom.memory[tile_index]
             for py in range(2):
                 for px in range(2):
-                    sub = py * 2 + px
 
                     sample_px = (1 - px) if hflip else px
                     sample_py = (1 - py) if vflip else py

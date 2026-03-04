@@ -8,6 +8,8 @@ main_routine = SubRoutine(Program.MAIN)
 main_routine << ("LABEL", "loop")
 main_routine << ("LMOV", 0b00011100, 0xD901)  # color 2 (0b01) of palette 1
 main_routine << ("LMOV", 0b00001000, 0xD803)  # FGOAM #1 attributes
+main_routine << ("LMOV", 1, 0x8002)  # VRAM #1 x position
+main_routine << ("LMOV", 1, 0x8003)  # VRAM #1 y position
 main_routine << ("OUTPUT",)
 main_routine << ("VSYNC",)
 main_routine << ("JMP", "loop")
